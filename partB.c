@@ -3,8 +3,9 @@
 #include <unistd.h>
 #include <sys/ipc.h>
 #include <sys/sem.h>
+#include <sys/shm.h>
 #include <semaphore.h>
-#include <sys/msg.h>;
+#include <sys/msg.h>
 #include <sys/types.h>
 //#include <mqueue.h>
 
@@ -18,7 +19,9 @@ union semun {
 	ushort * array;
 } arg ;
 
-
+void atmfunc(int msqid);
+void dbServer(void);
+//db edditor declared
 int SemaphoreWait(int semid, int iMayBlock );
 int SemaphoreSignal(int semid);
 void SemaphoreRemove(int semid);
@@ -33,7 +36,7 @@ int upin;
 
 
 //////// This is the DATA BASE //////////
-typedef struct {	
+typedef struct {
   int accnum;
   int pin;
   double fundsav;
@@ -43,24 +46,27 @@ typedef struct {
 DB* shared;///this is a shared variable of type DB
 
 
-//this is the first buffer that will be transferd between ATM and DB server 
+//this is the first buffer that will be transferd between ATM and DB server
 typedef struct msgbuf {
-         int 	 upin;
-         int	 uaccnum;
-         int stat // 1 if ok, 0 if wrong input
-         int uchoice;
-         double ufundsav;
-         double uwithdraw;
+    char    upin[3];
+    char    uaccnum[5];
+    int     stat; // 1 if ok, 0 if wrong input
+    int     uchoice;
+    double  ufundsav;
+    double  uwithdraw;
 } message_buf;
-         
-         
-         
-         
-         
-int main(){
 
+
+
+
+
+int main(){
+    //Test variables:
+    char* ACCOUNT= "00342";
+    char* PIN = "123";
 	///////// Message Queue creation///////
 	int msqid;
+	int msgtype;
     int msgflg = IPC_CREAT | 0666;
     key_t key;
     message_buf sbuf,rbuf;
@@ -70,161 +76,184 @@ int main(){
         		perror("msgget");
         		exit(1);
     }else{
-			 
-		(void) fprintf(stderr,"msgget: msgget succeeded: msqid = %d\n", msqid);	
+
+		(void) fprintf(stderr,"msgget: msgget succeeded: msqid = %d\n", msqid);
 	}
 
-	
 
-		
+
+
 	pid_t pid;
 	pid_t pidd;
-	
-		
+
+
 	semID=SemaphoreCreate(1);
-	  	
+
 	shmId = shmget(IPC_PRIVATE, 100 * sizeof(DB) , SHM_MODE);
-		
+
 	if((shmat(shmId, (DB*)0, 0))  ==(int*)-1){
-		printf("Error allocating memory\n");	
-	} 	
-	shared = (DB*) shmat(shmId, (DB*)0,0);  
-		
+		printf("Error allocating memory\n");
+	}
+	shared = (DB*) shmat(shmId, (DB*)0,0);
+
 	pid=fork();
-		
-		
-		
+
+
+
 	if(pid<0){
-		printf("forking error\n"); 
+		printf("forking error\n");
 	}
 	else if(pid>0){
-		atmfunc();	
+		atmfunc(msqid);
 		///////////////////////////////////
 		////////      ATM     ////////////
 		/////////////////////////////////
-		     
-			  
-	}      
-		
+
+
+	}
+
 	pidd=fork();
-		      
+
 	if(pidd==0){
-		while(true){
-			dbServer();
-		}		
+		//while(true){
+			//dbServer();
+		//}
 		///////////////////////////////////
 		////////   DB server  ////////////
 		/////////////////////////////////
 		//The second child " DB server"
-		
-	}
-			
+		if (msgrcv(msqid, &rbuf, sizeof(sbuf), msgtype, 0) < 0) { //what is message type, I wrote it accnum in this case
+            perror("msgrcv");
+            exit(1);
+        }
+        if (rbuf.stat == 0){
+            if(rbuf.uaccnum == ACCOUNT && rbuf.upin == PIN){
+                printf("message recieved and account and pin match\n");
+                sbuf.stat = 1;
+            } else sbuf.stat = 0;
+            printf("sending message\n");
+            if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){// sending account number
+                perror("msgsnd");
+                exit(1);
+            }
+        }else if (rbuf.stat == 1){
+            if (rbuf.uchoice == 1){
+                printf("now showing accont number pretend you see it cause it worked\n");
+            } else if (rbuf.uchoice ==2) {
+                printf("now displaying the other thing like changing your bank account\nYou requested %f\n", rbuf.uwithdraw);
+            }
+            else printf("something wierd happenned printing u choice: %i", rbuf.uchoice);
+        }
+        else printf("something wierd happenned printing stat: %i", rbuf.stat);
+	}//end DB server proccess specific
 
-	
+
+
 	if(pid==0){
-	
+
 		///////////////////////////////////
 		////////   DB EDITOR  ////////////
 		/////////////////////////////////
 		//first child DB Editor
-	  
-	  
-	}
-       
-}
-	return 0;
-	
 
+
+	}
+    return 0;
 }
+
 
 ///////////////////////////////////////////////////////////////////////
 ////////////////// My functions////////////////////////////////
 /////////////////////////////////////////////////////////////////////
 
 
-void atmfunc(){
+void atmfunc(int msqid){
+    message_buf sbuf, rbuf;
 	char* uaccnum1, upin1;
-	int uchoice1=3;
-	bool noInfo = true; 
-	while(noInfo){
-		printf("Enter your Account Number: \n");
-		scanf(%s,uaccnum1);
-		printf("Enter your PIN");
-		scanf(s%,upin1);
-		if(!(noInfo = (sizeOf(uaccnum1)==5*sizeof(char) && sizeof(upin1)==5*sizeof(char))))
-			printf("please enter 5 digit account number and 3 digit pin");
-	}
-	sbuf.uaccnum=uaccnum1;
-	sbuf.upin=upin1;
-	
-	if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){// sending account number
-		perror("msgsnd");
-		exit(1);
-	}
-	////////
-	if (msgrcv(msqid, &rbuf, sizeof(sbuf), stat, 0) < 0) {//receiving 1 if account exist and 0 if it doesnt 
-    	perror("msgrcv");
-        exit(1);
+	char* tempAccNum = "*****";
+	int uchoice1, msgtype;
+	char noInfo;
+	for(int attemptCount = 3; attemptCount>0; attemptCount--){
+        noInfo = 0x01;
+        while(noInfo){
+            printf("Enter your Account Number: \n");
+            scanf("%s",uaccnum1);
+            printf("Enter your PIN");
+            scanf("%s",upin1);
+            if(noInfo = (sizeOf(uaccnum1)==5*sizeof(char) && sizeof(upin1)==5*sizeof(char)))
+                printf("please enter 5 digit account number and 3 digit pin");
+        }
+        if(tempAccNum != uaccnum1) {
+            attemptCount=3;
+            tempAccNum = uaccnum1;
+        }
+        strcpy(sbuf.uaccnum, uaccnum1);
+        strcpy(sbuf.upin, upin1);
+
+        if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){// sending account number
+            perror("msgsnd");
+            exit(1);
+        }
+        ////////
+        if (msgrcv(msqid, &rbuf, sizeof(sbuf), msgtype, 0) < 0) {//receiving 1 if account exist and 0 if it doesnt
+            perror("msgrcv");
+            exit(1);
+        }
+        if(rbuf.stat==1){//then the account number exist
+            attemptCount = 4; //sets to 4 so that
+            uchoice1=3;
+            while (uchoice1>2 || uchoice1<0){
+                printf(" Choose from the following menu:\n 1- Display Funds \n 2- Withdraw Funds \n ");
+                scanf("i%", uchoice1);
+            }
+            sbuf.uchoice=uchoice1;
+
+            if(uchoice==2){//Withdraw ammount
+                printf("please enter the amount you would like to withdraw: \n");
+                scanf("f%", sbuf.uwithdraw);
+            }
+
+            if (msgsnd(msqid, &rbuf, sizeof(sbuf), IPC_NOWAIT) < 0) {// Withdrawing funds
+                perror("msgsnd");
+                exit(1);
+            }
+
+            if (msgrcv(msqid, &rbuf, sizeof(sbuf), msgtype, 0) < 0) {//receiving available funds
+                perror("msgrcv");
+                exit(1);
+            }
+
+            if(uchoice1==1){//user chose to see funds available
+	    		printf("Account Balance: %d\n",rbuf.ufundsav);
+            }else if(uchoice1==2){
+                if(rbuf.stat==3){
+                    printf("not enough funds\n");
+                    stat=1;
+                }else {
+                    printf("Enough funds\nNew Account Balance: %d",rbuf.ufundsav);
+                }
+            }
+        }
     }
-	if(rbuf.stat==1){//then the account number exist
-		
-		printf(" Choose from the following menu:\n 1- Display Funds \n 2- Withdraw Funds \n ");
-		scanf(i%,uchoice1);
-		sbuf.uchoice=uchoise1;
-		if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){// sending account number
-			perror("msgsnd");
-			exit(1);
-		}
-		if(uchoice==1){//user chose to see funds available
-				if (msgrcv(msqid, &rbuf, sizeof(sbuf), ufundsav, 0) < 0) {//receiving available funds
-	    			perror("msgrcv");
-	        		exit(1);
-	    		}
-	    		printf("Account Balance: %d",rbuf.ufundsav);
-	    		
-		}else if(uchoice==2){//Withdraw ammount
-			if (msgrcv(msqid, &rbuf, sizeof(sbuf), ufundsav, 0) < 0) {// Withdrawing funds
-	    			perror("msgrcv");
-	        		exit(1);
-	    	}
-	    	printf("New Account Balance: %d",rbuf.ufundsav);
-			
-		}
-		
-		}else if(rbuf.stat==0) {// wrong info; re-enter info
-			printf("Enter your Account Number: \n");
-			scanf(%i,uaccnum1);
-			printf("Enter your PIN");
-			scanf(i%,upin1);
-			sbuf.uaccnum=uaccnum1;
-			sbuf.upin=upin1;
-	
-		if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){// sending account number
-			perror("msgsnd");
-			exit(1);
-		}
-		
-	}
-	
 }
 
 void dbServer(){
-	while
-	if (msgrcv(msqid, &rbuf, sizeof(sbuf), accnum, 0) < 0) { //what is message type, I wrote it accnum in this case  
+//TODO: set stat to 3 if not enough funds in server
+	if (msgrcv(msqid, &rbuf, sizeof(sbuf), accnum, 0) < 0) { //what is message type, I wrote it accnum in this case
         perror("msgrcv");
         exit(1);
     }
-	
-		for(i=0;i<100;i++){
+
+    for(i=0;i<100;i++){
 			SemaphoreWait( semID, 1 ) ;
 			if(rbuf.uaccnum==shared[i].accnum && rbuf.upin==shared[i].pin ){ //account nuber correct
-			
+
 				sbuf.stat=1;
 				if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
 					perror("msgsnd");
 					exit(1);
-				}					
-				if (msgrcv(msqid, &rbuf, sizeof(sbuf), stat, 0) < 0) { //what is message type, I wrote it accnum in this case  
+				}
+				if (msgrcv(msqid, &rbuf, sizeof(sbuf), stat, 0) < 0) { //what is message type, I wrote it accnum in this case
 	       			 perror("msgrcv");
 	       			 exit(1);
 	   			}
@@ -234,46 +263,48 @@ void dbServer(){
 						perror("msgsnd");
 						exit(1);
 					}
-	   				
-	   			}else if(rbuf.uchoice==2){//user chose to withdraw ammount 
+
+	   			}else if(rbuf.uchoice==2){//user chose to withdraw ammount
 	   				   if(rbuf.uwithdraw<=shared.fundsav){
 						   shared[i]=sahred-rbuf.uwithdraw;
 						   sbuf.ufundsav=shared[i];
 						   if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
 								perror("msgsnd");
 								exit(1);
-						   }	
-						   
+						   }
+
 	   			       }else{
 	   			       		printf("Funds not available");
 	   			       		return;
 	   			       }
-	   				
+
 	   			}
-				SemaphoreSignal( semID );	
-				
-			}else{//incorrect ack number 
+				SemaphoreSignal( semID );
+
+			}else{//incorrect ack number
 				sbuf.stat=0;
 				if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
 					perror("msgsnd");
 					exit(1);
 				}
-				
-			}	
-			  		
+
+			}
+	}
+
+
 		}
-	
-	
-	
-	
+
+
+
+
 }
 
 Void dbEditor(){
-	
-	
-	
-	
-	
+
+
+
+
+
 }
 
 
