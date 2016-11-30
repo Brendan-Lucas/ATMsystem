@@ -7,6 +7,7 @@
 #include <semaphore.h>
 #include <sys/msg.h>
 #include <sys/types.h>
+#include <string.h>
 //#include <mqueue.h>
 
 #define SEM_MODE (0400 | 0200 | 044)
@@ -37,8 +38,8 @@ int upin;
 
 //////// This is the DATA BASE //////////
 typedef struct {
-  int accnum;
-  int pin;
+  char   accnum[5];
+  char   pin[3];
   double fundsav;
 
 } DB;
@@ -58,7 +59,7 @@ typedef struct msgbuf {
 
 
 
-
+void dbEditor();
 
 int main(){
     //Test variables:
@@ -95,7 +96,15 @@ int main(){
 		printf("Error allocating memory\n");
 	}
 	shared = (DB*) shmat(shmId, (DB*)0,0);
-
+    
+    for(int i=0;i<100;i++){
+    ////////////////////////////////////
+    ///// Modified!!!!/////////////////
+    //////////////////////////////////
+        strcpy(shared[i].accnum,{0,0,0,0,0,});
+        
+    }
+	
 	pid=fork();
 
 
@@ -104,12 +113,12 @@ int main(){
 		printf("forking error\n");
 	}
 	else if(pid>0){
-		atmfunc(msqid);
+		//atmfunc(msqid);
 		///////////////////////////////////
 		////////      ATM     ////////////
 		/////////////////////////////////
 
-
+        
 	}
 
 	pidd=fork();
@@ -162,9 +171,9 @@ int main(){
 }
 
 
-///////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
 ////////////////// My functions////////////////////////////////
-/////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////
 
 
 void atmfunc(int msqid){
@@ -245,7 +254,7 @@ void dbServer(){
     }
 
     for(i=0;i<100;i++){
-			SemaphoreWait( semID, 1 ) ;
+			SemaphoreWait( semID, 1 ) ;//do we actually have to wait ??
 			if(rbuf.uaccnum==shared[i].accnum && rbuf.upin==shared[i].pin ){ //account nuber correct
 
 				sbuf.stat=1;
@@ -274,12 +283,18 @@ void dbServer(){
 						   }
 
 	   			       }else{
-	   			       		printf("Funds not available");
-	   			       		return;
-	   			       }
+                              /////////////////////////////
+                             // MODIFICATIONS HERE ///////
+                            /////////////////////////////
+	   			       		sbuf.stat=3;
+	   			       		if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
+								perror("msgsnd");
+								exit(1);
+
+                       }
 
 	   			}
-				SemaphoreSignal( semID );
+				SemaphoreSignal( semID );// do we actually have tosignal ?
 
 			}else{//incorrect ack number
 				sbuf.stat=0;
@@ -289,23 +304,59 @@ void dbServer(){
 				}
 
 			}
-	}
+        }
 
 
-		}
-
-
-
-
-}
-
-Void dbEditor(){
-
+    }
 
 
 
 
 }
+
+
+
+
+/////////////////////////////
+// MODIFICATIONS HERE !!////
+///////////////////////////
+void dbEditor(){
+
+
+    char newpin[3];
+    double amount;
+    char newaccnum[5];
+    char empty[5]={ 0, 0, 0, 0, 0 };
+    printf("%s",empty);
+    // int z =10425;
+    //  while(z=10425){ no need for a while true or it will be stuck forever
+    //we need to put a defult case ==> every empty slot in the array of 100 elemnt has an accnum of 00000
+        for(int i=0;i<100;i++){
+            if(!strcmp(shared[i].accnum, empty)){ //since it returns zero if they are equivalent
+
+                printf("Enter New Account Number: \n");
+                scanf("%s",newaccnum);
+                strcpy(shared[i].accnum,newaccnum);
+                printf("Enter new pin");
+                scanf("%i",newpin);
+                strcpy(shared[i].pin,newpin);
+                printf("enter the amount of the deposite/withdraw");
+                scanf("%f",amount);
+                shared[i].fundsav= shared[i].fundsav - amount;
+                
+                //send update to dbserver "HOW !??"
+               // shared+=sizeof(DB);
+            }else{
+
+                printf("NO MORE SPACE FOR A NEW COSTUMER");
+
+            }
+        }
+   // }
+
+
+}
+
 
 
 
