@@ -18,12 +18,12 @@
 union semun {
 	int val;
 	struct semid_ds *buf;
-	ushort * array;
+	short * array;
 } arg ;
 
-void atmfunc(int msqid);
-void dbServer(void);
-void dbEditor();
+void *atmfunc(void *msqid);
+void *dbServer(void *msqid);
+void *dbEditor(void);
 
 //db edditor declared
 int SemaphoreWait(int semid, int iMayBlock );
@@ -52,18 +52,20 @@ DB* shared;///this is a shared variable of type DB
 
 //this is the first buffer that will be transferd between ATM and DB server
 typedef struct msgbuf {
+    long    msgtype;
     char    upin[3];
+    int     uchoice;
     char    uaccnum[5];
     int     stat; // 1 if ok, 0 if wrong input
-    int     uchoice;
     double  ufundsav;
     double  uwithdraw;
 } message_buf;
 
+#define NUMoTHREADs 3
 
 ///////////////______MAIN_____////////////////////////
 int main(){
-    final int NUMoTHREADs = 3;
+
     pthread_t threads[NUMoTHREADs];
     //Test variables:
     char* ACCOUNT= "00342";
@@ -98,15 +100,15 @@ int main(){
     }
 
 
-    if(pthread_create(&threads[0], NULL, atmfunc, msqid))
+    if(pthread_create(&threads[0], NULL, atmfunc, (void *)msqid))
         printf("ERROR: pthread 0 supposed to return 0");
         exit(1);
 
-    if(pthread_create(&threads[1], NULL, dbServer, msqid))
+    if(pthread_create(&threads[1], NULL, dbServer, (void *)msqid))
         printf("ERROR: pthread 1 supposed to return 0");
         exit(1);
 
-
+/*
 		if (msgrcv(msqid, &rbuf, sizeof(sbuf), msgtype, 0) < 0) { //what is message type, I wrote it accnum in this case
             perror("msgrcv");
             exit(1);
@@ -131,7 +133,8 @@ int main(){
         }
         else printf("something wierd happenned printing stat: %i", rbuf.stat);
 	}//end DB server proccess specific
-
+    */
+    pthread_exit(NULL);
     return 0;
 }
 
@@ -141,12 +144,16 @@ int main(){
 //////////////////////////////////////////////////////////////
 
 
-void atmfunc(int msqid){
+void *atmfunc(void *msqid){
     message_buf sbuf, rbuf;
 	char* uaccnum1, upin1;
 	char* tempAccNum = "*****";
-	int uchoice1, msgtype;
+	int uchoice1;
 	char noInfo;
+	sbuf.msgtype = 1;
+	rbuf.msgtype = 2;
+	int msgLength = sizeof(message_buf) - sizeof(long);
+
 	for(int attemptCount = 3; attemptCount>0; attemptCount--){
         noInfo = 0x01;
         while(noInfo){
@@ -154,7 +161,7 @@ void atmfunc(int msqid){
             scanf("%s",uaccnum1);
             printf("Enter your PIN");
             scanf("%s",upin1);
-            if(noInfo = (sizeOf(uaccnum1)==5*sizeof(char) && sizeof(upin1)==5*sizeof(char)))
+            if(noInfo = (sizeof(uaccnum1)==5*sizeof(char) && sizeof(upin1)==5*sizeof(char)))
                 printf("please enter 5 digit account number and 3 digit pin");
         }
         if(tempAccNum != uaccnum1) {
@@ -164,17 +171,17 @@ void atmfunc(int msqid){
         strcpy(sbuf.uaccnum, uaccnum1);
         strcpy(sbuf.upin, upin1);
 
-        if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){// sending account number
+        if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){// sending account number
             perror("msgsnd");
             exit(1);
         }
         ////////
-        if (msgrcv(msqid, &rbuf, sizeof(sbuf), msgtype, 0) < 0) {//receiving 1 if account exist and 0 if it doesnt
+        if (msgrcv(msqid, &rbuf, msgLength, rbuf.msgtype, 0) < 0) {//receiving 1 if account exist and 0 if it doesnt
             perror("msgrcv");
             exit(1);
         }
         if(rbuf.stat==1){//then the account number exist
-            attemptCount = 4; //sets to 4 so that
+            attemptCount = 4; //sets to 4 so that the loop will start again with attemptCount == 3;
             uchoice1=3;
             while (uchoice1>2 || uchoice1<0){
                 printf(" Choose from the following menu:\n 1- Display Funds \n 2- Withdraw Funds \n ");
@@ -187,105 +194,101 @@ void atmfunc(int msqid){
                 scanf("f%", sbuf.uwithdraw);
             }
 
-            if (msgsnd(msqid, &rbuf, sizeof(sbuf), IPC_NOWAIT) < 0) {// Withdrawing funds
+            if (msgsnd(msqid, &rbuf, msgLength, IPC_NOWAIT) < 0) {// Withdrawing funds
                 perror("msgsnd");
                 exit(1);
             }
 
-            if (msgrcv(msqid, &rbuf, sizeof(sbuf), msgtype, 0) < 0) {//receiving available funds
+            if (msgrcv(msqid, &rbuf, msgLength, rbuf.msgtype, 0) < 0) {//receiving available funds
                 perror("msgrcv");
                 exit(1);
             }
 
             if(uchoice1==1){//user chose to see funds available
-	    		printf("Account Balance: %d\n",rbuf.ufundsav);
+	    		printf("Account Balance: %d\n", rbuf.ufundsav);
             }else if(uchoice1==2){
                 if(rbuf.stat==3){
                     printf("not enough funds\n");
-                    stat=1;
                 }else {
-                    printf("Enough funds\nNew Account Balance: %d",rbuf.ufundsav);
+                    printf("Enough funds\nNew Account Balance: %d\n", rbuf.ufundsav);
                 }
             }
         }
     }
 }
 
-void dbServer(int msqid){
+void *dbServer(void *msqid){
+    message_buf rbuf, sbuf;
+    sbuf.msgtype = 2;
+    rbuf.msgtype = 1;
+
+    int msgLength = sizeof(message_buf) - sizeof(long);
 //TODO: set stat to 3 if not enough funds in server
-	if (msgrcv(msqid, &rbuf, sizeof(sbuf), accnum, 0) < 0) { //what is message type, I wrote it accnum in this case
-        perror("msgrcv");
-        exit(1);
-    }
-
-    for(i=0;i<100;i++){
-			SemaphoreWait( semID, 1) ;//do we actually have to wait ??
-			if(rbuf.uaccnum==shared[i].accnum && rbuf.upin==shared[i].pin ){ //account nuber correct
-
-				sbuf.stat=1;
-				if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
-					perror("msgsnd");
-					exit(1);
-				}
-				if (msgrcv(msqid, &rbuf, sizeof(sbuf), stat, 0) < 0) { //what is message type, I wrote it accnum in this case
-	       			 perror("msgrcv");
-	       			 exit(1);
-	   			}
-	   			if(rbuf.uchoice==1){//if it is equal to one then user chose to see available funds
-	   				sbuf.ufundsav=shared.fundsav;
-	   				if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
-						perror("msgsnd");
-						exit(1);
-					}
-
-	   			}else if(rbuf.uchoice==2){//user chose to withdraw ammount
-	   				   if(rbuf.uwithdraw<=shared.fundsav){
-						   shared[i]=sahred-rbuf.uwithdraw;
-						   sbuf.ufundsav=shared[i];
-						   if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
-								perror("msgsnd");
-								exit(1);
-						   }
-
-	   			       }else{
-                              /////////////////////////////
-                             // MODIFICATIONS HERE ///////
-                            /////////////////////////////
-	   			       		sbuf.stat=3;
-	   			       		if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
-								perror("msgsnd");
-								exit(1);
-
-                       }
-
-	   			}
-				SemaphoreSignal( semID );// do we actually have tosignal ?
-
-			}else{//incorrect ack number
-				sbuf.stat=0;
-				if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
-					perror("msgsnd");
-					exit(1);
-				}
-
-			}
+	for(int i=0; i<100; i++){
+        if (msgrcv(msqid, &rbuf, msgLength, rbuf.msgtype, 0) < 0) { //what is message type, I wrote it accnum in this case
+            perror("msgrcv");
+            exit(1);
         }
 
+        //TODO: what does this do???
+        SemaphoreWait( semID, 1) ;//do we actually have to wait ??
+        if(rbuf.uaccnum==shared[i].accnum && rbuf.upin==shared[i].pin ){ //account nuber correct
+
+            sbuf.stat=1;
+            if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
+                perror("msgsnd");
+                exit(1);
+            }
+            if (msgrcv(msqid, &rbuf, msgLength, rbuf.msgtype, 0) < 0) { //what is message type, I wrote it accnum in this case
+                 perror("msgrcv");
+                 exit(1);
+            }
+            if(rbuf.uchoice==1){//if it is equal to one then user chose to see available funds
+                sbuf.ufundsav=shared[i].fundsav;
+                if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
+                    perror("msgsnd");
+                    exit(1);
+                }
+
+            }else if(rbuf.uchoice==2){//user chose to withdraw ammount
+                   if(rbuf.uwithdraw<=shared[i].fundsav){
+                       shared[i].fundsav = shared[i].fundsav - rbuf.uwithdraw;
+                       sbuf.ufundsav = shared[i].fundsav;
+                       if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
+                            perror("msgsnd");
+                            exit(1);
+                       }
+
+                   }else{
+                          /////////////////////////////
+                         // MODIFICATIONS HERE ///////
+                        /////////////////////////////
+                        sbuf.stat=3;
+                        if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
+                            perror("msgsnd");
+                            exit(1);
+                        }
+
+                   }
+
+            }
+            //TODO: what does this do either
+            SemaphoreSignal( semID );// do we actually have tosignal ?
+
+        }else{//incorrect ack number
+            sbuf.stat=0;
+            if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
+                perror("msgsnd");
+                exit(1);
+            }
+        }
 
     }
-
-
-
-
 }
 
+/*
 
-
-
-/////////////////////////////
-// MODIFICATIONS HERE !!////
-///////////////////////////
-void dbEditor(){
+void *dbEditor(){
 
 
     char newpin[3];
@@ -323,7 +326,7 @@ void dbEditor(){
 }
 
 
-
+*/
 
 
 
