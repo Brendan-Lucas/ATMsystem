@@ -8,6 +8,7 @@
 #include <sys/msg.h>
 #include <sys/types.h>
 #include <string.h>
+#include <pthread.h>
 //#include <mqueue.h>
 
 #define SEM_MODE (0400 | 0200 | 044)
@@ -22,6 +23,8 @@ union semun {
 
 void atmfunc(int msqid);
 void dbServer(void);
+void dbEditor();
+
 //db edditor declared
 int SemaphoreWait(int semid, int iMayBlock );
 int SemaphoreSignal(int semid);
@@ -58,10 +61,10 @@ typedef struct msgbuf {
 } message_buf;
 
 
-
-void dbEditor();
-
+///////////////______MAIN_____////////////////////////
 int main(){
+    final int NUMoTHREADs = 3;
+    pthread_t threads[NUMoTHREADs];
     //Test variables:
     char* ACCOUNT= "00342";
     char* PIN = "123";
@@ -77,16 +80,8 @@ int main(){
         		perror("msgget");
         		exit(1);
     }else{
-
 		(void) fprintf(stderr,"msgget: msgget succeeded: msqid = %d\n", msqid);
 	}
-
-
-
-
-	pid_t pid;
-	pid_t pidd;
-
 
 	semID=SemaphoreCreate(1);
 
@@ -96,41 +91,22 @@ int main(){
 		printf("Error allocating memory\n");
 	}
 	shared = (DB*) shmat(shmId, (DB*)0,0);
-    
+
+    //Initialize shared memory
     for(int i=0;i<100;i++){
-    ////////////////////////////////////
-    ///// Modified!!!!/////////////////
-    //////////////////////////////////
-        strcpy(shared[i].accnum,{0,0,0,0,0,});
-        
+        strcpy(shared[i].accnum, "00000");
     }
-	
-	pid=fork();
 
 
+    if(pthread_create(&threads[0], NULL, atmfunc, msqid))
+        printf("ERROR: pthread 0 supposed to return 0");
+        exit(1);
 
-	if(pid<0){
-		printf("forking error\n");
-	}
-	else if(pid>0){
-		//atmfunc(msqid);
-		///////////////////////////////////
-		////////      ATM     ////////////
-		/////////////////////////////////
+    if(pthread_create(&threads[1], NULL, dbServer, msqid))
+        printf("ERROR: pthread 1 supposed to return 0");
+        exit(1);
 
-        
-	}
 
-	pidd=fork();
-
-	if(pidd==0){
-		//while(true){
-			//dbServer();
-		//}
-		///////////////////////////////////
-		////////   DB server  ////////////
-		/////////////////////////////////
-		//The second child " DB server"
 		if (msgrcv(msqid, &rbuf, sizeof(sbuf), msgtype, 0) < 0) { //what is message type, I wrote it accnum in this case
             perror("msgrcv");
             exit(1);
@@ -156,17 +132,6 @@ int main(){
         else printf("something wierd happenned printing stat: %i", rbuf.stat);
 	}//end DB server proccess specific
 
-
-
-	if(pid==0){
-
-		///////////////////////////////////
-		////////   DB EDITOR  ////////////
-		/////////////////////////////////
-		//first child DB Editor
-
-
-	}
     return 0;
 }
 
@@ -217,7 +182,7 @@ void atmfunc(int msqid){
             }
             sbuf.uchoice=uchoice1;
 
-            if(uchoice==2){//Withdraw ammount
+            if(uchoice1==2){//Withdraw ammount
                 printf("please enter the amount you would like to withdraw: \n");
                 scanf("f%", sbuf.uwithdraw);
             }
@@ -246,7 +211,7 @@ void atmfunc(int msqid){
     }
 }
 
-void dbServer(){
+void dbServer(int msqid){
 //TODO: set stat to 3 if not enough funds in server
 	if (msgrcv(msqid, &rbuf, sizeof(sbuf), accnum, 0) < 0) { //what is message type, I wrote it accnum in this case
         perror("msgrcv");
@@ -254,7 +219,7 @@ void dbServer(){
     }
 
     for(i=0;i<100;i++){
-			SemaphoreWait( semID, 1 ) ;//do we actually have to wait ??
+			SemaphoreWait( semID, 1) ;//do we actually have to wait ??
 			if(rbuf.uaccnum==shared[i].accnum && rbuf.upin==shared[i].pin ){ //account nuber correct
 
 				sbuf.stat=1;
@@ -343,7 +308,7 @@ void dbEditor(){
                 printf("enter the amount of the deposite/withdraw");
                 scanf("%f",amount);
                 shared[i].fundsav= shared[i].fundsav - amount;
-                
+
                 //send update to dbserver "HOW !??"
                // shared+=sizeof(DB);
             }else{
