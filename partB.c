@@ -69,23 +69,23 @@ typedef struct my_msgbuf {
 ///////////////______MAIN_____////////////////////////
 int main(){
 
-    pthread_t threads[NUMoTHREADs];
-    //Test variables:
-    char* ACCOUNT= "00342";
-    char* PIN = "123";
+  pthread_t threads[NUMoTHREADs];
+  //Test variables:
+  char* ACCOUNT= "00342";
+  char* PIN = "123";
 	///////// Message Queue creation///////
 	long msqid;
 	int msgtype;
-    int msgflg = IPC_CREAT | 0666;
-    key_t key;
-    my_msgbuf sbuf,rbuf;
-    size_t buf_length;
+  int msgflg = 0666 | IPC_CREAT;
+  key_t key;
+  my_msgbuf sbuf,rbuf;
+  size_t buf_length;
 	key=1234;
-	if ((msqid =(long)msgget(key, msgflg )) < 0) {
+	if ((msqid =(long)msgget(key, msgflg)) < 0) {
         		perror("msgget");
         		exit(1);
     }else{
-		(void) fprintf(stderr,"msgget: msgget succeeded: msqid = %ld\n", msqid);
+		(void) fprintf(stderr,"msgget: msgget succeeded: msqid = %li\n", msqid);
 	}
 
 	semID=SemaphoreCreate(1);
@@ -103,10 +103,10 @@ int main(){
   }
 
 
-  if(pthread_create(&threads[0], NULL, atmfunc, (void *)msqid))
+  if(pthread_create(&threads[0], NULL, atmfunc, &msqid))
       printf("ERROR: pthread 0 supposed to return 0");
       exit(1);
-
+	printf("Yo It made it past first p thread and i didnt think it would\n");
   if(pthread_create(&threads[1], NULL, dbServer, (void *)msqid))
       printf("ERROR: pthread 1 supposed to return 0");
       exit(1);
@@ -115,23 +115,23 @@ int main(){
     return 0;
 }
 
-
-////////////////////////////////////////////////////////////////
-////////////////// My functions////////////////////////////////
-//////////////////////////////////////////////////////////////
-
+//***************Functions*************************//
 
 void *atmfunc(void *msq){
-  my_msgbuf sbuf, rbuf;
+	printf("reached beginning of atmfunc\n");
+	my_msgbuf sbuf, rbuf;
 	char* uaccnum1;
 	char* upin1;
 	char* tempAccNum = "*****";
 	int uchoice1;
 	char noInfo;
 	long msqid = (long)msq;
+	printf("Message que id as recieved is: %li", msqid);
 	int toServer = 1;
+	sbuf.msgtype = toServer;
 	int fromServer = 2;
-	int msgLength = sizeof(my_msgbuf) - sizeof(long);
+	rbuf.msgtype=fromServer;
+	int msgLength = sizeof(rbuf.contents);
 
 	for(int attemptCount = 3; attemptCount>0; attemptCount--){
         noInfo = 0x01;
@@ -184,12 +184,12 @@ void *atmfunc(void *msq){
             }
 
             if(uchoice1==1){//user chose to see funds available
-	    		printf("Account Balance: %f\n", rbuf.contents.ufundsav);
+	    		printf("Account Balance: %lf\n", rbuf.contents.ufundsav);
             }else if(uchoice1==2){
                 if(rbuf.contents.stat==3){
                     printf("not enough funds\n");
                 }else {
-                    printf("Enough funds\nNew Account Balance: %f\n", rbuf.contents.ufundsav);
+                    printf("Enough funds\nNew Account Balance: %lf\n", rbuf.contents.ufundsav);
                 }
             }
         }
@@ -199,9 +199,12 @@ void *atmfunc(void *msq){
 void *dbServer(void *msq){
     my_msgbuf rbuf, sbuf;
     int toATM = 2;
+		sbuf.msgtype = toATM;
     int fromATM = 1;
+		rbuf.msgtype = fromATM;
     long msqid = (long)msq;
-    int msgLength = sizeof(my_msgbuf) - sizeof(long);
+    int msgLength = sizeof(rbuf.contents);
+
 //TODO: set stat to 3 if not enough funds in server
 		if (msgrcv(msqid, &rbuf, msgLength, fromATM, 0) < 0) { //what is message type, I wrote it accnum in this case
 				perror("msgrcv");
@@ -214,7 +217,7 @@ void *dbServer(void *msq){
         SemaphoreWait( semID, 1) ;//do we actually have to wait ??
         if(rbuf.contents.uaccnum==shared[i].accnum){
 						i=100;
-						if(rbuf.contents.upin==shared[i].pin ){ //account nuber correct
+						if(rbuf.contents.upin==shared[i].pin){ //account nuber correct
 		            sbuf.contents.stat=1;
 		            if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
 		                perror("msgsnd");
