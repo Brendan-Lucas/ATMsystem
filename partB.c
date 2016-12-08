@@ -52,15 +52,17 @@ DB* shared;///this is a shared variable of type DB
 
 
 //this is the first buffer that will be transferd between ATM and DB server
-typedef struct msgbuf {
+typedef struct my_msgbuf {
     long    msgtype;
-    char    upin[3];
-    int     uchoice;
-    char    uaccnum[5];
-    int     stat; // 1 if ok, 0 if wrong input
-    double  ufundsav;
-    double  uwithdraw;
-} message_buf;
+    struct msgContents{
+				char    upin[3];
+		    int     uchoice;
+		    char    uaccnum[5];
+		    int     stat; // 1 if ok, 0 if wrong input
+		    double  ufundsav;
+		    double  uwithdraw;
+		}contents;
+}my_msgbuf;
 
 #define NUMoTHREADs 3
 
@@ -76,7 +78,7 @@ int main(){
 	int msgtype;
     int msgflg = IPC_CREAT | 0666;
     key_t key;
-    message_buf sbuf,rbuf;
+    my_msgbuf sbuf,rbuf;
     size_t buf_length;
 	key=1234;
 	if ((msqid =(long)msgget(key, msgflg )) < 0) {
@@ -120,7 +122,7 @@ int main(){
 
 
 void *atmfunc(void *msq){
-    message_buf sbuf, rbuf;
+  my_msgbuf sbuf, rbuf;
 	char* uaccnum1;
 	char* upin1;
 	char* tempAccNum = "*****";
@@ -129,7 +131,7 @@ void *atmfunc(void *msq){
 	long msqid = (long)msq;
 	int toServer = 1;
 	int fromServer = 2;
-	int msgLength = sizeof(message_buf) - sizeof(long);
+	int msgLength = sizeof(my_msgbuf) - sizeof(long);
 
 	for(int attemptCount = 3; attemptCount>0; attemptCount--){
         noInfo = 0x01;
@@ -145,8 +147,8 @@ void *atmfunc(void *msq){
             attemptCount=3;
             strcpy(tempAccNum, uaccnum1);
         }
-        strcpy(sbuf.uaccnum, uaccnum1);
-        strcpy(sbuf.upin, upin1);
+        strcpy(sbuf.contents.uaccnum, uaccnum1);
+        strcpy(sbuf.contents.upin, upin1);
 
         if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){// sending account number
             perror("msgsnd");
@@ -157,18 +159,18 @@ void *atmfunc(void *msq){
             perror("msgrcv");
             exit(1);
         }
-        if(rbuf.stat==1){//then the account number exist
+        if(rbuf.contents.stat==1){//then the account number exist
             attemptCount = 4; //sets to 4 so that the loop will start again with attemptCount == 3;
             uchoice1=3;
             while (uchoice1>2 || uchoice1<0){
                 printf("Choose from the following menu:\n 1- Display Funds \n 2- Withdraw Funds \n ");
                 scanf("%i", &uchoice1);
             }
-            sbuf.uchoice=uchoice1;
+            sbuf.contents.uchoice=uchoice1;
 
             if(uchoice1==2){//Withdraw ammount
                 printf("please enter the amount you would like to withdraw: \n");
-                scanf("%lf", &sbuf.uwithdraw);
+                scanf("%lf", &sbuf.contents.uwithdraw);
             }
 
             if (msgsnd(msqid, &rbuf, msgLength, IPC_NOWAIT) < 0) {// Withdrawing funds
@@ -176,18 +178,18 @@ void *atmfunc(void *msq){
                 exit(1);
             }
 
-            if (msgrcv(msqid, &rbuf, msgLength, rbuf.msgtype, 0) < 0) {//receiving available funds
+            if (msgrcv(msqid, &rbuf, msgLength, fromServer, 0) < 0) {//receiving available funds
                 perror("msgrcv");
                 exit(1);
             }
 
             if(uchoice1==1){//user chose to see funds available
-	    		printf("Account Balance: %f\n", rbuf.ufundsav);
+	    		printf("Account Balance: %f\n", rbuf.contents.ufundsav);
             }else if(uchoice1==2){
-                if(rbuf.stat==3){
+                if(rbuf.contents.stat==3){
                     printf("not enough funds\n");
                 }else {
-                    printf("Enough funds\nNew Account Balance: %f\n", rbuf.ufundsav);
+                    printf("Enough funds\nNew Account Balance: %f\n", rbuf.contents.ufundsav);
                 }
             }
         }
@@ -195,11 +197,11 @@ void *atmfunc(void *msq){
 }
 
 void *dbServer(void *msq){
-    message_buf rbuf, sbuf;
+    my_msgbuf rbuf, sbuf;
     int toATM = 2;
     int fromATM = 1;
     long msqid = (long)msq;
-    int msgLength = sizeof(message_buf) - sizeof(long);
+    int msgLength = sizeof(my_msgbuf) - sizeof(long);
 //TODO: set stat to 3 if not enough funds in server
 		if (msgrcv(msqid, &rbuf, msgLength, fromATM, 0) < 0) { //what is message type, I wrote it accnum in this case
 				perror("msgrcv");
@@ -210,10 +212,10 @@ void *dbServer(void *msq){
 
         //TODO: what does this do???
         SemaphoreWait( semID, 1) ;//do we actually have to wait ??
-        if(rbuf.uaccnum==shared[i].accnum){
+        if(rbuf.contents.uaccnum==shared[i].accnum){
 						i=100;
-						if(rbuf.upin==shared[i].pin ){ //account nuber correct
-		            sbuf.stat=1;
+						if(rbuf.contents.upin==shared[i].pin ){ //account nuber correct
+		            sbuf.contents.stat=1;
 		            if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
 		                perror("msgsnd");
 		                exit(1);
@@ -223,22 +225,22 @@ void *dbServer(void *msq){
 		                 perror("msgrcv");
 		                 exit(1);
 		            }
-		            if(rbuf.uchoice==1){//if it is equal to one then user chose to see available funds
-		                sbuf.ufundsav=shared[i].fundsav;
+		            if(rbuf.contents.uchoice==1){//if it is equal to one then user chose to see available funds
+		                sbuf.contents.ufundsav=shared[i].fundsav;
 		                if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
 		                    perror("msgsnd");
 		                    exit(1);
 		                }
-		            }else if(rbuf.uchoice==2){//user chose to withdraw ammount
-		                   if(rbuf.uwithdraw<=shared[i].fundsav){
-		                       shared[i].fundsav = shared[i].fundsav - rbuf.uwithdraw;
-		                       sbuf.ufundsav = shared[i].fundsav;
+		            }else if(rbuf.contents.uchoice==2){//user chose to withdraw ammount
+		                   if(rbuf.contents.uwithdraw<=shared[i].fundsav){
+		                       shared[i].fundsav = shared[i].fundsav - rbuf.contents.uwithdraw;
+		                       sbuf.contents.ufundsav = shared[i].fundsav;
 		                       if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
 		                            perror("msgsnd");
 		                            exit(1);
 		                       }
 		                   }else{
-		                        sbuf.stat=3;
+		                        sbuf.contents.stat=3;
 		                        if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
 		                            perror("msgsnd");
 		                            exit(1);
@@ -251,7 +253,7 @@ void *dbServer(void *msq){
 		            SemaphoreSignal( semID );// do we actually have tosignal ?
 
 		        }else{//incorrect ack number
-		            sbuf.stat=0;
+		            sbuf.contents.stat=0;
 		            if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
 		                perror("msgsnd");
 		                exit(1);
