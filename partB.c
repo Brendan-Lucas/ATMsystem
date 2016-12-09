@@ -223,10 +223,10 @@ void *dbServer(void *msq){
 		printf("Server: message recieved \n");
 		for(int i=0; i<100; i++){
 				printf("Server: account number is %s, while account number #%d is %s \n", rbuf.contents.uaccnum, i, shared[i].accnum);
-        if(rbuf.contents.uaccnum==shared[i].accnum){
+        if(strcmp(rbuf.contents.uaccnum, shared[i].accnum)==0){
 						i=100;
 						printf("Server: first if reached in\n");
-						if(rbuf.contents.upin==shared[i].pin){ //account nuber correct
+						if(strcmp(rbuf.contents.upin, shared[i].pin)==0){ //account nuber correct
 								printf("Server: seccond if reached stat is one\nServer: sending message\n");
 		            sbuf.contents.stat=1;
 		            if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
