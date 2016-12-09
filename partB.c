@@ -75,24 +75,22 @@ int main(){
   char* ACCOUNT= "00342";
   char* PIN = "123";
 	///////// Message Queue creation///////
-	long msqid;
+	int msqid;
 	int msgtype;
   int msgflg = 0666 | IPC_CREAT;
   key_t key;
   my_msgbuf sbuf,rbuf;
   size_t buf_length;
 	key=1234;
-	if ((msqid =(long)msgget(key, msgflg)) < 0) {
+	if ((msqid =(int)msgget(key, msgflg)) < 0) {
         		perror("msgget");
         		exit(1);
     }else{
-		(void) fprintf(stderr,"msgget: msgget succeeded: msqid = %li\n", msqid);
+				(void)fprintf(stderr,"msgget: msgget succeeded: msqid = %i\n", msqid);
 	}
 
 	semID=SemaphoreCreate(1);
-
 	shmId = shmget(IPC_PRIVATE, 100 * sizeof(DB) , SHM_MODE);
-
 	if((shmat(shmId, (DB*)0, 0))  ==(int*)-1){
 		printf("Error allocating memory\n");
 	}
@@ -107,23 +105,23 @@ int main(){
       strcpy(shared[i].accnum, "00000");
   }
 	int rc=0;
-  if(rc=pthread_create(&threads[0], NULL, atmfunc, (void *)msqid)){
-		printf("ERROR: pthread 0 supposed to return 0\n");
-		exit(1);
+  if(rc=pthread_create(&threads[0], NULL, atmfunc, (void *)(long)msqid)){
+			printf("ERROR: pthread 0 supposed to return 0\n");
+			exit(1);
 	}else{
-		printf("pthreadsuccessful return code = %i\n",rc);
+			printf("pthreadsuccessful return code = %i\n",rc);
 	}
 
-  if(pthread_create(&threads[1], NULL, dbServer, (void *)msqid)){
+  if(pthread_create(&threads[1], NULL, dbServer, (void *)(long)msqid)){
       printf("ERROR: pthread 1 supposed to return 0\n");
       exit(1);
-		}
+	}
 
-		pthread_join(threads[0], NULL);
-		pthread_join(threads[1], NULL);
-		printf("exiting main\n");
-    pthread_exit(NULL);
-    return 0;
+	pthread_join(threads[0], NULL);
+	pthread_join(threads[1], NULL);
+	printf("exiting main\n");
+  pthread_exit(NULL);
+  return 0;
 };
 
 //***************Functions*************************//
@@ -134,9 +132,9 @@ void *atmfunc(void *msq){
 	char uaccnum1[6];
 	int uchoice1;
 	char upin1[4];
-	long msqid = (long)msq;
+	int msqid = (int)(long)msq;
 	char *tempAccNum;
-	printf("Message que id as recieved is: %li\n", msqid);
+	printf("Message que id as recieved is: %i\n", msqid);
 	int toServer = 1;
 	sbuf.msgtype = toServer;
 	int fromServer = 2;
@@ -212,20 +210,20 @@ void *dbServer(void *msq){
 		sbuf.msgtype = toATM;
     int fromATM = 1;
 		rbuf.msgtype = fromATM;
-    long msqid = (long)msq;
+    int msqid = (int)(long)msq;
     int msgLength = sizeof(rbuf.contents);
-
+		int i=0;
 		//TODO: set stat to 3 if not enough funds in server
 		if (msgrcv(msqid, &rbuf, msgLength, fromATM, 0) < 0) { //what is message type, I wrote it accnum in this case
 				perror("msgrcv");
 				exit(1);
 		}
 		printf("Server: message recieved \n");
-		for(int i=0; i<100; i++){
+		for(i=0; i<100; i++){
 				printf("Server: account number is %s, while account number #%d is %s \n", rbuf.contents.uaccnum, i, shared[i].accnum);
         if(strcmp(rbuf.contents.uaccnum, shared[i].accnum)==0){
-						i=100;
-						printf("Server: first if reached in\n");
+						printf("Server: first if reached in accnumber= %s..\n", shared[i].accnum);
+						printf("	the pin we have for this account is: %s, and expected pin is: %s\n", rbuf.contents.upin, shared[i].pin);
 						if(strcmp(rbuf.contents.upin, shared[i].pin)==0){ //account nuber correct
 								printf("Server: seccond if reached stat is one\nServer: sending message\n");
 		            sbuf.contents.stat=1;
@@ -256,7 +254,7 @@ void *dbServer(void *msq){
 		                      	exit(1);
 		              			}
 		                }else{
-		                  		sbuf.contents.stat=3;
+		                  		sbuf.contents.stat=4;
 													printf("Server: Returning not enough fundsav\n");
 		                      if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
 	                            perror("msgsnd");
@@ -264,16 +262,25 @@ void *dbServer(void *msq){
 		                      }
 		              	}
 		            }
-		        }else{//incorrect ack number
+		        }else{//incorrect pin number
 		            sbuf.contents.stat=0;
-								printf("Server: returning Invalid Pin or account num\n");
+								printf("Server: returning Invalid Pin number\n");
 		            if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
 		                perror("msgsnd");
 		                exit(1);
 		            }
         		}
+						i=101;
 				}
     }
+		if (i==100){
+				sbuf.contents.stat=3;
+				printf("Server: returning Invalid Account number\n");
+				if(msgsnd(msqid, &sbuf, sizeof(sbuf), IPC_NOWAIT) < 0 ){
+						perror("msgsnd");
+						exit(1);
+				}
+		}
 };
 /*
 
