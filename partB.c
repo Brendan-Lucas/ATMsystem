@@ -59,7 +59,7 @@ int main(){
     }else{
 				(void)fprintf(stderr,"msgget: msgget succeeded: msqid = %i\n", msqid);
 	}
-  /*
+  
 	int rc=0;
   if(rc=pthread_create(&threads[0], NULL, atmfunc, (void *)(long)msqid)){
 			printf("ERROR: pthread 0 supposed to return 0\n");
@@ -72,7 +72,7 @@ int main(){
 			printf("ERROR: pthread 1 supposed to return 0\n");
 			exit(1);
 	}
-  */
+
 	if(pthread_create(&threads[2], NULL, dbEditor, (void *)0)){
 			printf("ERROR: pthread 2 supposed to return 0\n");
 			exit(1);
@@ -260,9 +260,11 @@ void *dbServer(void *msq){
 void *dbEditor(void *zero){
     char newpin[4];
     double amount;
+    char *amountStr;
+    char decision=0x00;
     char newaccnum[6];
 		bool found = false;
-		char decision=0x00;
+    char temp=0x00;
 		char line[1024];
     int accnumLine=0;
 		char lines[100][50];
@@ -285,8 +287,8 @@ void *dbEditor(void *zero){
     decision=0x00;
 		printf("oppenned File data\n");
 		printf("Make changes to database?? [Y|n]\n");
-		//scanf("%c", &decision);
-    decision='y';
+    scanf("%c", &temp);
+    scanf("%c", &decision);
 		if (decision == 'y' || decision == 'Y'){
 				printf("enter an account number, if it exiests you will be asked to delete or edit it\n");
 				printf("if it does not, it will be added and you will be asked to edit its specifics\n");
@@ -301,57 +303,67 @@ void *dbEditor(void *zero){
 						}
 						lncount++;
 				}
+        fclose(io);
         for(int i=0; i<lncount; i++)printf("line at %i = %s\n", i, lines[i]);
 				if(found){
 						printf("Account number found would you like to delete or edit?[d|e]\n");
+            scanf("%c", &temp);
             scanf("%c", &decision);
             if(decision == 'd' || decision == 'D'){
                 //REWRITE
-                fclose(io);
                 io = fopen("database.txt", "w+");
                 for (int i=0; i<lncount; i++){
                     if(i!=accnumLine)fputs(lines[i], io);
                 }
+                fclose(io);
             }else {
                 printf("would you like to change the account ballance or the pin? [b/p]\n");
+                scanf("%c", &temp);
                 scanf("%c", &decision);
                 if(decision == 'b' || decision == 'B'){
                     printf("What would you like to change the balance to?\n");
-                    scanf("%lf", &amount);
-                    char *tempLine[3];
-                    for(int i=1; i<4; i++){
-                        tempLine[i-1] = getFeild(lines[accnumLine], i, ',');
-                    }
-                    sprintf(tempLine[2], "%lf", amount);
-                    strcpy(lines[accnumLine], ("%s,%s,%s,", tempLine[0],tempLine[1], tempLine[2]));
+                    scanf("%c", &temp);
+                    scanf("%s", amountStr);
+
+                    strcpy(newpin, getFeild(lines[accnumLine], 2, ','));
+
+                    strcpy(lines[accnumLine], newaccnum);
+                    strcat(lines[accnumLine],",");
+                    strcat(lines[accnumLine], newpin);
+                    strcat(lines[accnumLine],",");
+                    strcat(lines[accnumLine], amountStr);
+                    strcat(lines[accnumLine],",\n");
                     //REWRITE
-                    fclose(io);
                     io = fopen("database.txt", "w+");
                     for (int i=0; i<lncount; i++){
                         fputs(lines[i], io);
                     }
+                    fclose(io);
                 }else{
                     printf("What would you like to change the PIN to?\n");
                     scanf("%s", newpin);
-                    char *tempLine[3];
-                    for(int i=1; i<4; i++){
-                        tempLine[i-1] = getFeild(lines[accnumLine], i, ',');
-                    }
-                    strcpy(tempLine[1], newpin);
-                    strcpy(lines[accnumLine], ("%s,%s,%s,", tempLine[0],tempLine[1], tempLine[2]));
+
+                    amountStr = getFeild(lines[accnumLine], 3, ',');
+                    printf("amountstr= %s\n", amountStr);
+                    strcpy(lines[accnumLine], newaccnum);
+                    strcat(lines[accnumLine],",");
+                    strcat(lines[accnumLine], newpin);
+                    strcat(lines[accnumLine],",");
+                    strcat(lines[accnumLine], amountStr);
+                    strcat(lines[accnumLine],",\n");
+                    printf("%s\n", lines[accnumLine]);
                     //REWRITE
-                    fclose(io);
                     io = fopen("database.txt", "w+");
                     for (int i=0; i<lncount; i++){
                         fputs(lines[i], io);
                     }
+                    fclose(io);
                 }
             }
 				}else {
             accnumLine=lncount;
             lncount++;
-            char *amountStr;
-            char temp;
+            printf("Account not found,\n");
             printf("adding account number to database\n");
             printf("Please enter the pin for the account (3 characters please):\n");
             scanf("%c", &temp);
@@ -361,10 +373,6 @@ void *dbEditor(void *zero){
             amount=90.9;
             printf("%f\n", amount);
             amountStr = "90.90";
-            //sprintf(amountStr, "%lf", amount);
-            printf("converted double to string\n");
-            printf("%s\n", newaccnum);
-            printf("%s\n", newpin);
 
             strcpy(lines[accnumLine],  newaccnum);
             strcat(lines[accnumLine],",");
@@ -374,7 +382,6 @@ void *dbEditor(void *zero){
             strcat(lines[accnumLine],",\n");
             printf("%s\n", lines[accnumLine]);
             printf("Printing new line to file\n");
-            fclose(io);
             io=fopen("database.txt", "w+");
             for (int i=0; i<lncount; i++){
                 fputs(lines[i], io);
