@@ -52,125 +52,147 @@ pthread_t threads[NUMoTHREADs];
 ///this is a shared variable of type DB//TODO: get rid of this one;
 ///////////////______MAIN_____////////////////////////
 int main(){
-	///////// Message Queue creation///////
-	int msqid;
-	int msgtype;
-  int msgflg = 0666 | IPC_CREAT;
-  key_t key;
-  my_msgbuf sbuf,rbuf;
-  size_t buf_length;
-	key=1234;
-	if ((msqid = msgget(key, msgflg)) < 0) {
-        		perror("msgget");
-        		exit(1);
-    }else{
-				(void)fprintf(stderr,"msgget: msgget succeeded: msqid = %i\n", msqid);
-	}
-  //IT'S PTHREAD TIME:::
-  if(pthread_create(&threads[0], NULL, dbEditor, (void *)0)){
-			printf("ERROR: pthread 2 supposed to return 0\n");
-			exit(1);
-	}
-  pthread_join(threads[0], NULL);
+	 ///////// Message Queue creation///////
+  	int msqid;
+  	int msgtype;
+    int msgflg = 0666 | IPC_CREAT;
+    key_t key;
+    my_msgbuf sbuf,rbuf;
+    size_t buf_length;
+  	key=1234;
+  	if ((msqid = msgget(key, msgflg)) < 0) {
+          		perror("msgget");
+          		exit(1);
+      }else{
+  				(void)fprintf(stderr,"msgget: msgget succeeded: msqid = %i\n", msqid);
+  	}
 
-	int rc=0;
-  if(rc=pthread_create(&threads[1], NULL, atmfunc, (void *)(long)msqid)){
-			printf("ERROR: pthread 0 supposed to return 0\n");
-			exit(1);
-	}else{
-			printf("pthreadsuccessful return code = %i\n",rc);
-	}
-while(true){
+    //IT'S PTHREAD TIME:::
+    if(pthread_create(&threads[0], NULL, dbEditor, (void *)0)){
+  			printf("ERROR: pthread 2 supposed to return 0\n");
+  			exit(1);
+  	}
+    pthread_join(threads[0], NULL);
+
+  	int rc=0;
+    if(rc=pthread_create(&threads[1], NULL, atmfunc, (void *)(long)msqid)){
+  			printf("ERROR: pthread 0 supposed to return 0\n");
+  			exit(1);
+  	}else{
+  			printf("pthreadsuccessful return code = %i\n",rc);
+  	}
+
     if(pthread_create(&threads[2], NULL, dbServer, (void *)(long)msqid)){
         printf("ERROR: pthread 1 supposed to return 0\n");
         exit(1);
     }else {
-       printf("New server\n");
+       printf("New server:\n");
     }
+
+
+
+    pthread_join(threads[1], NULL);
     pthread_join(threads[2], NULL);
-}
-
-  pthread_join(threads[1], NULL);
-
-	printf("exiting main\n");
-  pthread_exit(NULL);
-  return 0;
+  	printf("exiting main\n");
+    pthread_exit(NULL);
+    return 0;
 };
 
 //***************Functions*************************//
 
 void *atmfunc(void *msq){
-	printf("reached beginning of atmfunc\n");
-	my_msgbuf sbuf, rbuf;
-	char uaccnum1[6];
-  std::string tempstr;
-  char tempAccNum[6];
-	int uchoice1;
-	char upin1[4];
-	int msqid = (int)(long)msq;
-	printf("Message que id as recieved is: %i\n", msqid);
-	int toServer = 1;
-	int fromServer = 2;
-  initBuff(&sbuf, toServer);
-  initBuff(&rbuf, fromServer);
-	int msgLength = sizeof(rbuf.contents);
+  	printf("reached beginning of atmfunc\n");
+  	my_msgbuf sbuf, rbuf;
+  	char uaccnum1[6];
+    std::string tempstr;
+    char tempAccNum[6];
+  	int uchoice1;
+    char choice[50];
+    int msqid = (int)(long)msq;
+  	char upin1[4];
+  	printf("Message que id as recieved is: %i\n", msqid);
+  	int toServer = 1;
+  	int fromServer = 2;
+  	int msgLength = sizeof(rbuf.contents);
 
-	for(int attemptCount = 3; attemptCount>0; attemptCount--){
-	    getInput((char*)"ATM: Enter your Account Number:", uaccnum1, 5);
-	    getInput((char*)"ATM: Enter your pin number:", upin1, 3);
-	    if(strcmp(tempAccNum, uaccnum1)!=0) {
-					attemptCount=3;
-	        strcpy(tempAccNum, uaccnum1);
-	    }
-	    strcpy(sbuf.contents.uaccnum, uaccnum1);
-	    strcpy(sbuf.contents.upin, upin1);
-      if(attemptCount==1)sbuf.contents.stat=1;
-      printf("ATM: Sending Message\n");
-	    if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){// sending account number
-	        perror("ATM: msgsnd\n");
-	        exit(1);
-	    }
-      printf("ATM: Message sent\n");
-	    ////////
-	    if (msgrcv(msqid, &rbuf, msgLength, fromServer, 0) < 0) {//receiving 1 if account exist and 0 if it doesnt
-	        perror("ATM: msgrcv\n");
-	        exit(1);
-	    }
-      printf("ATM: Message recieved\n");
-	    if(rbuf.contents.stat==1){//then the account number exist
-	        attemptCount = 4; //sets to 4 so that the loop will start again with attemptCount == 3;
-	        uchoice1=3;
-	        while (uchoice1>2 || uchoice1<0){
-	            printf("ATM: Choose from the following menu:\n 1- Display Funds \n 2- Withdraw Funds\n ");
-	            scanf("%i", &uchoice1);
-	        }
-	        sbuf.contents.uchoice=uchoice1;
+  	for(int attemptCount = 3; attemptCount>0; attemptCount--){
+        initBuff(&sbuf, toServer);
+        initBuff(&rbuf, fromServer);
+  	    getInput((char*)"ATM: Enter your Account Number:", uaccnum1, 5);
+        if (strstr(uaccnum1, "x")!=NULL || strstr(uaccnum1, "X")!=NULL){
+            sbuf.contents.stat=2;
+            break;
+        }
+  	    getInput((char*)"ATM: Enter your pin number:", upin1, 3);
+        if (strstr(upin1, "x")!=NULL || strstr(upin1, "X")!=NULL){
+            sbuf.contents.stat=2;
+            break;
+        }
 
-	        if(uchoice1==2){//Withdraw amount
-	            printf("ATM: Please enter the amount you would like to withdraw: \n");
-	            scanf("%lf", &sbuf.contents.uwithdraw);
-	        }
+        if(strcmp(tempAccNum, uaccnum1)!=0) {
+  					attemptCount=3;
+  	        strcpy(tempAccNum, uaccnum1);
+  	    }
+  	    strcpy(sbuf.contents.uaccnum, uaccnum1);
+  	    strcpy(sbuf.contents.upin, upin1);
+        if(attemptCount==1)sbuf.contents.stat=1;
+        printf("ATM: Sending Message\n");
+  	    if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){// sending account number
+  	        perror("ATM: msgsnd\n");
+  	        exit(1);
+  	    }
+        printf("ATM: Message sent\n");
+  	    ////////
+  	    if (msgrcv(msqid, &rbuf, msgLength, fromServer, 0) < 0) {//receiving 1 if account exist and 0 if it doesnt
+  	        perror("ATM: msgrcv\n");
+  	        exit(1);
+  	    }
+        printf("ATM: Message recieved\n");
+  	    if(rbuf.contents.stat==1){//then the account number exist
+  	        attemptCount = 4; //sets to 4 so that the loop will start again with attemptCount == 3;
+  	        uchoice1=3;
+  	        while (uchoice1>2 || uchoice1<0){
+                printf("ATM: Choose from the following menu:\n 1- Display Funds \n 2- Withdraw Funds\n");
+                scanf("%s", choice);
+                if(strstr(choice, "x")!=NULL || strstr(choice, "X")!=NULL){
+                    sbuf.contents.stat=2;
+                    break;
+                }
+                uchoice1=atoi(choice);
+  	        }
+            if(sbuf.contents.stat==2) break;
 
-	        if (msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0) {// Withdrawing funds
-	            perror("ATM: msgsnd");
-	            exit(1);
-	        }
+  	        sbuf.contents.uchoice=uchoice1;
 
-	        if (msgrcv(msqid, &rbuf, msgLength, fromServer, 0) < 0) {//receiving available funds
-	            perror("ATM: msgrcv");
-	            exit(1);
-	        }
+  	        if(uchoice1==2){//Withdraw amount
+  	            printf("ATM: Please enter the amount you would like to withdraw: \n");
+  	            scanf("%lf", &sbuf.contents.uwithdraw);
+  	        }
 
-	        if(uchoice1==1){//user chose to see funds available
-	  					printf("ATM: Account Balance: %lf\n", rbuf.contents.ufundsav);
-	        }else if(uchoice1==2){
-	            if(rbuf.contents.stat==3){
-	                printf("ATM: not enough funds\n");
-	            }else {
-	                printf("ATM: Enough funds\nNew Account Balance: %lf\n", rbuf.contents.ufundsav);
-	            }
-          }
-      }
+            if (msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0) {// Withdrawing funds
+  	            perror("ATM: msgsnd");
+  	            exit(1);
+  	        }
+
+  	        if (msgrcv(msqid, &rbuf, msgLength, fromServer, 0) < 0) {//receiving available funds
+  	            perror("ATM: msgrcv");
+  	            exit(1);
+  	        }
+
+  	        if(uchoice1==1){//user chose to see funds available
+  	  					printf("ATM: Account Balance: %lf\n", rbuf.contents.ufundsav);
+  	        }else if(uchoice1==2){
+  	            if(rbuf.contents.stat==3){
+  	                printf("ATM: not enough funds\n");
+  	            }else {
+  	                printf("ATM: Enough funds\nNew Account Balance: %lf\n", rbuf.contents.ufundsav);
+  	            }
+            }
+        }
+    }//ENDFOR
+    if (msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0) {// Withdrawing funds
+        perror("ATM: msgsnd");
+        exit(1);
     }
 };
 
@@ -197,6 +219,10 @@ void *dbServer(void *msq){
           exit(1);
       }
       printf("Server: message recieved \n");
+      if(rbuf.contents.stat==2) {
+          printf("Server: breaking\n");
+          break;
+      }
       //fill shared data
       io = fopen("database.txt", "r");
       for(sharedSize=0; fgets(line, 1024, io); sharedSize++){
@@ -213,7 +239,7 @@ void *dbServer(void *msq){
           if(strcmp(rbuf.contents.uaccnum, shared[i].accnum)==0){
               found=true;
               printf("Server: first if reached in accnumber= %s..\n", shared[i].accnum);
-              printf("	the pin we have for this account is: %s, and expected pin is: %s\n", rbuf.contents.upin, shared[i].pin);
+              printf("the pin we have for this account is: %s, and expected pin is: %s\n", rbuf.contents.upin, shared[i].pin);
               if(strcmp(rbuf.contents.upin, shared[i].pin)==0){ //pin nuber correct
                   printf("Server: seccond if reached stat is one\nServer: sending message\n");
                   sbuf.contents.stat=1;
@@ -226,6 +252,7 @@ void *dbServer(void *msq){
                        perror("Server:msgrcv");
                        exit(1);
                   }
+                  if(rbuf.contents.stat==2)break;
                   printf("Server: Choice message recieved\n");
                   if(rbuf.contents.uchoice==1){//if it is equal to one then user chose to see available funds
                       sbuf.contents.ufundsav=shared[i].fundsav;
@@ -246,7 +273,8 @@ void *dbServer(void *msq){
                           }
                           fclose(io);
                       }else{
-                            sbuf.contents.stat=4;
+                            sbuf.contents.stat=3;
+                            sbuf.fundsav=shared[i].fundsav;
                             printf("Server: Returning not enough fundsav\n");
                       }
                   }
@@ -265,14 +293,15 @@ void *dbServer(void *msq){
               }
           }
       }
-      if (!found){
+      if (!found && rbuf.contents.stat!=2){
           sbuf.contents.stat=3;
           printf("Server: returning Invalid Account number\n");
       }
-
-      if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
-          perror("msgsnd");
-          exit(1);
+      if(rbuf.contents.stat!=2){
+          if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
+              perror("msgsnd");
+              exit(1);
+          }
       }
     }//ENDWHILE
 
