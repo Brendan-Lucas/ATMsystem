@@ -42,7 +42,7 @@ void getInput(char *question, char *returnString, int inputLength);
 char* getFeild(char* line, int n, char c);
 void getFeild2(char* line, int n, char* retrunStr);
 void initBuff(my_msgbuf* buf, int msgtypeNum);
-
+void makeLine(char* line, char* arg1, char* arg2, char* arg3);
 
 //Globals
 //constants
@@ -66,7 +66,7 @@ int main(){
     }else{
 				(void)fprintf(stderr,"msgget: msgget succeeded: msqid = %i\n", msqid);
 	}
-  //IT'S PTHREAD TIME::::
+  //IT'S PTHREAD TIME:::
   if(pthread_create(&threads[0], NULL, dbEditor, (void *)0)){
 			printf("ERROR: pthread 2 supposed to return 0\n");
 			exit(1);
@@ -80,7 +80,7 @@ int main(){
 	}else{
 			printf("pthreadsuccessful return code = %i\n",rc);
 	}
-for(int i=0; i<5; i++){
+while(true){
     if(pthread_create(&threads[2], NULL, dbServer, (void *)(long)msqid)){
         printf("ERROR: pthread 1 supposed to return 0\n");
         exit(1);
@@ -180,100 +180,102 @@ void *dbServer(void *msq){
     int fromATM = 1;
     char lines[100][50];
     bool found = false;
-    initBuff(&sbuf, toATM);
-		initBuff(&rbuf, fromATM);
     int msqid = (int)(long)msq;
     int msgLength = sizeof(rbuf.contents);
-		int i=0;
     DB shared[100];
     FILE* io;
     char line[1024];
     int sharedSize=0;
     printf("Server: entered server\n");
-		if (msgrcv(msqid, &rbuf, msgLength, fromATM, 0) < 0) { //what is message type, I wrote it accnum in this case
-				perror("msgrcv");
-				exit(1);
-		}
-    printf("Server: message recieved \n");
-    //fill shared data
-    io = fopen("database.txt", "r");
-    for(sharedSize=0; fgets(line, 1024, io); sharedSize++){
-        strcpy(lines[sharedSize], line);
-        getFeild2(line,  1, shared[sharedSize].accnum);
-        getFeild2(line,  2, shared[sharedSize].pin);
-        shared[sharedSize].fundsav = atof(getFeild(line, 3, ','));
-    }
-    fclose(io);
+    while (rbuf.contents.stat!=2){
+      found=false;
+      initBuff(&rbuf, fromATM);
+      initBuff(&sbuf, toATM);
 
-		printf("Server: finished initializing shared\n");
-		for(int i=0; i<sharedSize && !found; i++){
-				printf("Server: account number is %s, while account number #%d is %s \n", rbuf.contents.uaccnum, i, shared[i].accnum);
-        if(strcmp(rbuf.contents.uaccnum, shared[i].accnum)==0){
-            found=true;
-            printf("Server: first if reached in accnumber= %s..\n", shared[i].accnum);
-            printf("	the pin we have for this account is: %s, and expected pin is: %s\n", rbuf.contents.upin, shared[i].pin);
-            if(strcmp(rbuf.contents.upin, shared[i].pin)==0){ //pin nuber correct
-                printf("Server: seccond if reached stat is one\nServer: sending message\n");
-                sbuf.contents.stat=1;
-                if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
-                    perror("Server: msgsnd");
-                    exit(1);
-                }
-                //User makes choice about weather they want to deposit or withdraw funds and how much they want to withdraw;
-                if (msgrcv(msqid, &rbuf, msgLength, fromATM, 0) < 0) { //what is message type, I wrote it accnum in this case
-                     perror("Server:msgrcv");
-                     exit(1);
-                }
-                printf("Server: Choice message recieved\n");
-                if(rbuf.contents.uchoice==1){//if it is equal to one then user chose to see available funds
-                    sbuf.contents.ufundsav=shared[i].fundsav;
-                    printf("Server: sending back available funds\n");
-                }else if(rbuf.contents.uchoice==2){//user chose to withdraw amount
-                    if(rbuf.contents.uwithdraw<=shared[i].fundsav){
-                        shared[i].fundsav = shared[i].fundsav - rbuf.contents.uwithdraw;
-                        sbuf.contents.ufundsav = shared[i].fundsav;
-                        printf("Server: returning successful withdrawral funds left\n..rewriting Database...\n");
-                        stringstream ss;
-                        ss << shared[i].fundsav;
-                        strcpy(lines[i], ("%s,%s,%s,\n", shared[i].accnum, shared[i].pin, ss.str().c_str()));
-                        /*strcpy(lines[i],("%s,%s,\n", shared[i].accnum));
-                        strcat(lines[i], ("%s,", shared[i].pin));
-                        strcat(lines[i], ("%s,\n", ss.str().c_str()));*/
-                        //REWRITE
-                        io = fopen("database.txt", "w+");
-                        for (int j=0; j<sharedSize; j++){
-                            fputs(lines[j], io);
-                        }
-                        fclose(io);
-                    }else{
-                          sbuf.contents.stat=4;
-                          printf("Server: Returning not enough fundsav\n");
-                    }
-                }
-            }else{//incorrect pin number
-              if(rbuf.contents.stat==1){
-                  printf("Server: 3rd Attempt, Locking Account Num %s\n",rbuf.contents.uaccnum);
-                  sbuf.contents.stat=5;
-                  lines[i][0]='x';
-                  //REWRITE
-                  io = fopen("database.txt", "w+");
-                  for (int j=0; j<sharedSize; j++){
-                      fputs(lines[j], io);
+      if (msgrcv(msqid, &rbuf, msgLength, fromATM, 0) < 0) { //what is message type, I wrote it accnum in this case
+          perror("msgrcv");
+          exit(1);
+      }
+      printf("Server: message recieved \n");
+      //fill shared data
+      io = fopen("database.txt", "r");
+      for(sharedSize=0; fgets(line, 1024, io); sharedSize++){
+          strcpy(lines[sharedSize], line);
+          getFeild2(line,  1, shared[sharedSize].accnum);
+          getFeild2(line,  2, shared[sharedSize].pin);
+          shared[sharedSize].fundsav = atof(getFeild(line, 3, ','));
+      }
+      fclose(io);
+
+      printf("Server: finished initializing shared\n");
+      for(int i=0; i<sharedSize && !found; i++){
+          printf("Server: account number is %s, while account number #%d is %s \n", rbuf.contents.uaccnum, i, shared[i].accnum);
+          if(strcmp(rbuf.contents.uaccnum, shared[i].accnum)==0){
+              found=true;
+              printf("Server: first if reached in accnumber= %s..\n", shared[i].accnum);
+              printf("	the pin we have for this account is: %s, and expected pin is: %s\n", rbuf.contents.upin, shared[i].pin);
+              if(strcmp(rbuf.contents.upin, shared[i].pin)==0){ //pin nuber correct
+                  printf("Server: seccond if reached stat is one\nServer: sending message\n");
+                  sbuf.contents.stat=1;
+                  if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
+                      perror("Server: msgsnd");
+                      exit(1);
                   }
-                  fclose(io);
-              }else sbuf.contents.stat=0;
-            }
-				}
-    }
-		if (!found){
-				sbuf.contents.stat=3;
-				printf("Server: returning Invalid Account number\n");
-		}
+                  //User makes choice about weather they want to deposit or withdraw funds and how much they want to withdraw;
+                  if (msgrcv(msqid, &rbuf, msgLength, fromATM, 0) < 0) { //what is message type, I wrote it accnum in this case
+                       perror("Server:msgrcv");
+                       exit(1);
+                  }
+                  printf("Server: Choice message recieved\n");
+                  if(rbuf.contents.uchoice==1){//if it is equal to one then user chose to see available funds
+                      sbuf.contents.ufundsav=shared[i].fundsav;
+                      printf("Server: sending back available funds\n");
+                  }else if(rbuf.contents.uchoice==2){//user chose to withdraw amount
+                      if(rbuf.contents.uwithdraw<=shared[i].fundsav){
+                          shared[i].fundsav = shared[i].fundsav - rbuf.contents.uwithdraw;
+                          sbuf.contents.ufundsav = shared[i].fundsav;
+                          printf("Server: returning successful withdrawral funds left\n..rewriting Database...\n");
+                          stringstream ss;
+                          ss << (double)shared[i].fundsav;
+                          makeLine(lines[i], shared[i].accnum, shared[i].pin, strdup(ss.str().c_str()));
+                          printf("Server: %s\n", lines[i]);
+                          //REWRITE
+                          io = fopen("database.txt", "w+");
+                          for (int j=0; j<sharedSize; j++){
+                              fputs(lines[j], io);
+                          }
+                          fclose(io);
+                      }else{
+                            sbuf.contents.stat=4;
+                            printf("Server: Returning not enough fundsav\n");
+                      }
+                  }
+              }else{//incorrect pin number
+                if(rbuf.contents.stat==1){
+                    printf("Server: 3rd Attempt, Locking Account Num %s\n",rbuf.contents.uaccnum);
+                    sbuf.contents.stat=5;
+                    lines[i][0]='x';
+                    //REWRITE
+                    io = fopen("database.txt", "w+");
+                    for (int j=0; j<sharedSize; j++){
+                        fputs(lines[j], io);
+                    }
+                    fclose(io);
+                }else sbuf.contents.stat=0;
+              }
+          }
+      }
+      if (!found){
+          sbuf.contents.stat=3;
+          printf("Server: returning Invalid Account number\n");
+      }
 
-    if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
-        perror("msgsnd");
-        exit(1);
-    }
+      if(msgsnd(msqid, &sbuf, msgLength, IPC_NOWAIT) < 0 ){
+          perror("msgsnd");
+          exit(1);
+      }
+    }//ENDWHILE
+
 		printf("Server: exiting\n");
 };
 
@@ -339,17 +341,10 @@ void *dbEditor(void *zero){
                 scanf("%c", &temp);
                 scanf("%c", &decision);
                 if(decision == 'b' || decision == 'B'){
-                    printf("What would you like to change the balance to?\n");
-                    scanf("%c", &temp);
-                    scanf("%s", amountStr);
-
+                    getInput((char*)"What would you like to change the balance to?\n", amountStr, 49);
                     strcpy(newpin, getFeild(lines[accnumLine], 2, ','));
-                    strcpy(lines[accnumLine], newaccnum);
-                    strcat(lines[accnumLine],",");
-                    strcat(lines[accnumLine], newpin);
-                    strcat(lines[accnumLine],",");
-                    strcat(lines[accnumLine], amountStr);
-                    strcat(lines[accnumLine],",\n");
+                    makeLine(lines[accnumLine], newaccnum, newpin, amountStr);
+                    printf("line: %s\n", lines[accnumLine]);
                     //REWRITE
                     io = fopen("database.txt", "w+");
                     for (int i=0; i<lncount; i++){
@@ -359,14 +354,7 @@ void *dbEditor(void *zero){
                 }else{
                     getInput((char *)"What would you like to change the PIN to?", newpin, 3);
                     strcpy(amountStr, getFeild(lines[accnumLine], 3, ','));
-                    printf("amountstr= %s\n", amountStr);
-                    strcpy(lines[accnumLine], newaccnum);
-                    strcat(lines[accnumLine],",");
-                    strcat(lines[accnumLine], newpin);
-                    strcat(lines[accnumLine],",");
-                    strcat(lines[accnumLine], amountStr);
-                    strcat(lines[accnumLine],",\n");
-                    printf("%s\n", lines[accnumLine]);
+                    makeLine(lines[accnumLine], newaccnum, newpin, amountStr);
                     //REWRITE
                     io = fopen("database.txt", "w+");
                     for (int i=0; i<lncount; i++){
@@ -379,17 +367,10 @@ void *dbEditor(void *zero){
             accnumLine=lncount;
             lncount++;
             printf("Account not found,\n");
-            printf("adding account number to database\n");
-            printf("Please enter the pin for the account (3 characters please):\n");
+            printf("..Adding account number to database\n");
             getInput((char *)"Please enter the pin for the account (3 characters please)", newpin, 3);
             getInput((char *)"Please enter the new account balance", amountStr, 49);
-            strcpy(lines[accnumLine],  newaccnum);
-            strcat(lines[accnumLine],",");
-            strcat(lines[accnumLine], newpin);
-            strcat(lines[accnumLine],",");
-            strcat(lines[accnumLine],  amountStr);
-            strcat(lines[accnumLine],",\n");
-            printf("%s\n", lines[accnumLine]);
+            makeLine(lines[accnumLine], newaccnum, newpin, amountStr);
             printf("Printing new line to file\n");
             io=fopen("database.txt", "w+");
             for (int i=0; i<lncount; i++){
@@ -398,7 +379,7 @@ void *dbEditor(void *zero){
             fclose(io);
         }
 		}
-    printf("exiting database editor\n");
+    printf("Exiting database editor\n");
 }
 
 void getInput(char *question, char *returnString, int inputLength){
@@ -435,5 +416,14 @@ void initBuff(my_msgbuf* buf, int msgtypeNum){
     buf->contents.stat=0;
     buf->contents.ufundsav=0.0;
     buf->contents.uwithdraw=0.0;
+}
+
+void makeLine(char* line, char* arg1, char* arg2, char* arg3){
+    strcpy(line, arg1);
+    strcat(line,",");
+    strcat(line, arg2);
+    strcat(line, ",");
+    strcat(line, arg3);
+    strcat(line, ",\n");
 }
 //void rewrite()
